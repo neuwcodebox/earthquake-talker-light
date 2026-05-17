@@ -54,13 +54,13 @@
 - `TELEGRAM_BOT_TOKEN`: 필수
 - `TELEGRAM_CHAT_ID`: 필수
 - `KMA_API_KEY`: 국외 지진 수집에만 필요
-- `STATE_PATH`: 기본값 `.state/earthquake_talker_state.json`
 - `OUTPUT_DIR`: 기본값 `output`
 - `POLL_INTERVAL_SECONDS`: 전체 루프 기본값 `1`
 - `MICRO_INTERVAL_SECONDS`: 기본값 `10`
-- `PEWS_INTERVAL_SECONDS`: 기본값 `0.5`
-- `OVERSEAS_INTERVAL_SECONDS`: 기본값 `60`
+- `PEWS_INTERVAL_SECONDS`: 기본값 `1`
+- `OVERSEAS_INTERVAL_SECONDS`: 기본값 `30`
 - `DRY_RUN`: `1`, `true`, `yes`이면 텔레그램 API 호출 대신 콘솔 출력
+- 프로젝트 루트의 `.env` 파일을 자동으로 읽는다.
 
 메시지 우선순위에 따라 텔레그램 `disable_notification`을 정한다.
 
@@ -69,15 +69,15 @@
 
 이미지 메시지는 `sendPhoto`를 사용하고, 일반 텍스트는 `sendMessage`를 사용한다.
 
-## 상태 저장
+## 실행 중 상태
 
-파일 기반 JSON 상태를 사용한다. 종료와 재시작 사이에 최소한 다음 값을 보존한다.
+별도 상태 파일을 만들지 않는다. 각 수집원은 프로세스 메모리에서만 다음 값을 유지한다.
 
-- 미소지진 최신 텍스트 해시 또는 전문
-- PEWS 마지막 알림 ID
-- 국외 지진 seen map
+- 미소지진: 실행 후 최초로 얻은 안내를 이전 값으로 초기화하고 전송하지 않는다. 이후 텍스트가 달라질 때만 전송한다.
+- PEWS: 실행 중 마지막으로 처리한 초 단위 파일명과 `지진ID + phase` 알림 ID를 기억해 중복 전송을 막는다.
+- 국외 지진: 실행 후 최초 조회 결과의 이벤트 ID들을 기존 항목으로 간주하고 전송하지 않는다. 이후 새 이벤트 ID만 전송한다.
 
-쓰기 실패가 전체 루프를 중단시키지 않도록 임시 파일에 쓴 뒤 원자적 교체를 시도한다.
+프로세스 재시작 시에는 다시 최초 조회 결과를 기준 상태로 초기화한다.
 
 ## 실패 처리
 
@@ -85,6 +85,7 @@
 - 개별 수집원 실패는 로그로 남기고 다음 루프에서 재시도한다.
 - 텔레그램 전송 실패는 제한된 횟수로 재시도한다.
 - 기상청 PEWS 초 단위 파일이 없는 경우 정상 상황으로 보고 조용히 다음 tick으로 넘어간다.
+- 바이너리 파일은 HTTP 200 OK 응답일 때만 처리한다.
 
 ## 비목표
 

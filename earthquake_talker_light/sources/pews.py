@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 from urllib.parse import unquote
 
 from PIL import Image, ImageDraw
@@ -79,21 +79,21 @@ class KmaPewsSource:
 
     def __init__(
         self,
-        state: dict[str, Any],
         *,
         output_dir: Path,
-        interval_seconds: float = 0.5,
+        interval_seconds: float = 1.0,
         timeout: float = 15.0,
         data_path: str = PEWS_DATA_PATH,
         fetcher: Callable[[str, float], bytes] | None = None,
     ) -> None:
-        self.state = state
+        self.previous_bin_time: str | None = None
+        self.previous_alarm_id: str | None = None
         self.output_dir = output_dir
         self.interval_seconds = interval_seconds
         self.timeout = timeout
         self.data_path = data_path.rstrip("/")
         self.fetcher = fetcher or self._fetch
-        self.tide_ms = float(self.state.get("tide_ms", 1000.0))
+        self.tide_ms = 1000.0
 
     def poll(self) -> list[Message]:
         bin_time = datetime.fromtimestamp(
@@ -101,9 +101,9 @@ class KmaPewsSource:
             tz=timezone.utc,
         )
         bin_time_str = bin_time.strftime("%Y%m%d%H%M%S")
-        if self.state.get("previous_bin_time") == bin_time_str:
+        if self.previous_bin_time == bin_time_str:
             return []
-        self.state["previous_bin_time"] = bin_time_str
+        self.previous_bin_time = bin_time_str
 
         try:
             bytes_b = self.fetcher(f"{self.data_path}/{bin_time_str}.b", self.timeout)
@@ -120,7 +120,7 @@ class KmaPewsSource:
             return []
 
         quake = parse_earthquake(phase, body_bits, bytes_b[-MAX_EQK_STR_LEN:])
-        if quake.alarm_id == self.state.get("previous_alarm_id"):
+        if quake.alarm_id == self.previous_alarm_id:
             return []
 
         info_text = self._request_location_text(quake.earthquake_id, phase) or quake.info_text
@@ -136,7 +136,7 @@ class KmaPewsSource:
             max_areas=quake.max_areas,
             info_text=info_text,
         )
-        self.state["previous_alarm_id"] = quake.alarm_id
+        self.previous_alarm_id = quake.alarm_id
 
         messages = [build_pews_message(quake)]
         image_path = self._request_grid_image(quake)

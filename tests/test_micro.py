@@ -8,14 +8,13 @@ def test_html_to_text_normalizes_kma_micro_html() -> None:
 
 
 def test_micro_source_skips_initial_then_emits_changed_notice() -> None:
-    state: dict[str, object] = {}
     responses = iter(
         [
             "<p>첫 지진 안내</p>",
             "<p>새 지진 안내</p>",
         ]
     )
-    source = KmaMicroSource(state, fetcher=lambda _url, _timeout: next(responses))
+    source = KmaMicroSource(fetcher=lambda _url, _timeout: next(responses))
 
     assert source.poll() == []
     messages = source.poll()

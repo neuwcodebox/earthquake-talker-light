@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import re
-from typing import Any, Callable
+from typing import Callable
 from urllib.parse import urlencode
 import xml.etree.ElementTree as ET
 
@@ -43,14 +43,14 @@ class KmaOverseasEarthquakeSource:
 
     def __init__(
         self,
-        state: dict[str, Any],
         auth_key: str,
         *,
-        interval_seconds: float = 60.0,
+        interval_seconds: float = 30.0,
         timeout: float = 15.0,
         fetcher: Callable[[str, float], str] | None = None,
     ) -> None:
-        self.state = state
+        self.seen: dict[str, str] = {}
+        self.initialized = False
         self.auth_key = auth_key
         self.interval_seconds = interval_seconds
         self.timeout = timeout
@@ -61,8 +61,7 @@ class KmaOverseasEarthquakeSource:
         url = build_request_url(self.auth_key, now)
         xml = self.fetcher(url, self.timeout)
         items = parse_overseas_items(xml)
-        seen = self._seen()
-        initialized = bool(self.state.get("initialized"))
+        previous_seen = set(self.seen)
         messages: list[Message] = []
 
         for item in items:
@@ -74,28 +73,19 @@ class KmaOverseasEarthquakeSource:
             event_id = build_event_id(item.occurred_raw, item.issued_raw)
             if not event_id:
                 continue
-            seen[event_id] = now.isoformat()
-            if event_id in self._previous_seen and initialized:
+            self.seen[event_id] = now.isoformat()
+            if event_id in previous_seen and self.initialized:
                 continue
-            if initialized:
+            if self.initialized:
                 messages.append(build_message(item))
 
-        self.state["initialized"] = True
+        self.initialized = True
         self._prune_seen(now)
         return messages
 
-    def _seen(self) -> dict[str, str]:
-        seen = self.state.get("seen")
-        if not isinstance(seen, dict):
-            seen = {}
-            self.state["seen"] = seen
-        self._previous_seen = set(str(key) for key in seen.keys())
-        return seen
-
     def _prune_seen(self, now: datetime) -> None:
-        seen = self._seen()
         expired: list[str] = []
-        for key, value in seen.items():
+        for key, value in self.seen.items():
             try:
                 last_seen = datetime.fromisoformat(str(value))
             except ValueError:
@@ -104,7 +94,7 @@ class KmaOverseasEarthquakeSource:
             if now - last_seen > timedelta(seconds=STATE_TTL_SECONDS):
                 expired.append(key)
         for key in expired:
-            seen.pop(key, None)
+            self.seen.pop(key, None)
 
     @staticmethod
     def _fetch(url: str, timeout: float) -> str:

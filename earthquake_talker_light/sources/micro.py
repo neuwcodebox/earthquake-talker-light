@@ -3,7 +3,7 @@ from __future__ import annotations
 from html.parser import HTMLParser
 import html
 import re
-from typing import Any, Callable
+from typing import Callable
 
 from earthquake_talker_light.http import fetch_bytes
 from earthquake_talker_light.message import Message, Priority
@@ -33,13 +33,13 @@ class KmaMicroSource:
 
     def __init__(
         self,
-        state: dict[str, Any],
         *,
         interval_seconds: float = 10.0,
         timeout: float = 15.0,
         fetcher: Callable[[str, float], str] | None = None,
     ) -> None:
-        self.state = state
+        self.latest_text: str | None = None
+        self.initialized = False
         self.interval_seconds = interval_seconds
         self.timeout = timeout
         self.fetcher = fetcher or self._fetch
@@ -50,13 +50,12 @@ class KmaMicroSource:
         if "지진" not in text and "여진" not in text:
             return []
 
-        latest = self.state.get("latest_text")
-        if latest == text:
+        if self.latest_text == text:
             return []
 
-        self.state["latest_text"] = text
-        if not self.state.get("initialized"):
-            self.state["initialized"] = True
+        self.latest_text = text
+        if not self.initialized:
+            self.initialized = True
             return []
 
         return [

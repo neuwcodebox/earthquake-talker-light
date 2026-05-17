@@ -10,19 +10,16 @@ from earthquake_talker_light.sources import Source
 from earthquake_talker_light.sources.micro import KmaMicroSource
 from earthquake_talker_light.sources.overseas import KmaOverseasEarthquakeSource
 from earthquake_talker_light.sources.pews import KmaPewsSource
-from earthquake_talker_light.state import StateStore
 from earthquake_talker_light.telegram import TelegramClient
 
 
-def build_sources(settings: Settings, state_store: StateStore) -> list[Source]:
+def build_sources(settings: Settings) -> list[Source]:
     sources: list[Source] = [
         KmaMicroSource(
-            state_store.section("micro"),
             interval_seconds=settings.micro_interval_seconds,
             timeout=settings.request_timeout_seconds,
         ),
         KmaPewsSource(
-            state_store.section("pews"),
             output_dir=settings.output_dir,
             interval_seconds=settings.pews_interval_seconds,
             timeout=settings.request_timeout_seconds,
@@ -31,7 +28,6 @@ def build_sources(settings: Settings, state_store: StateStore) -> list[Source]:
     if settings.kma_api_key:
         sources.append(
             KmaOverseasEarthquakeSource(
-                state_store.section("overseas"),
                 settings.kma_api_key,
                 interval_seconds=settings.overseas_interval_seconds,
                 timeout=settings.request_timeout_seconds,
@@ -65,9 +61,7 @@ def main() -> None:
     settings = Settings.from_env()
     settings.validate_for_send()
 
-    state_store = StateStore(settings.state_path)
-    state_store.load()
-    sources = build_sources(settings, state_store)
+    sources = build_sources(settings)
     client = TelegramClient(
         settings.telegram_bot_token,
         settings.telegram_chat_id,
@@ -89,13 +83,11 @@ def main() -> None:
                     messages = source.poll()
                     if messages:
                         send_all(client, messages)
-                    state_store.save()
                 except Exception:
                     logging.exception("Source failed: %s", source.name)
             time.sleep(settings.poll_interval_seconds)
     except KeyboardInterrupt:
-        logging.info("Interrupted; saving state")
-        state_store.save()
+        logging.info("Interrupted")
 
 
 if __name__ == "__main__":

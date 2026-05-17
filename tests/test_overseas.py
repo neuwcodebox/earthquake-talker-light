@@ -49,13 +49,11 @@ def test_parse_intensity_supports_roman_and_numeric_labels() -> None:
 
 
 def test_overseas_source_skips_initial_and_emits_new_event() -> None:
-    state: dict[str, object] = {}
     now_label = datetime.now(KST).strftime("%Y%m%d%H%M")
     first_xml = _xml(_info(now_label, now_label))
     second_xml = _xml(_info(now_label, now_label), _info(now_label, now_label + "01"))
     responses = iter([first_xml, second_xml])
     source = KmaOverseasEarthquakeSource(
-        state,
         "dummy-key",
         fetcher=lambda _url, _timeout: next(responses),
     )
