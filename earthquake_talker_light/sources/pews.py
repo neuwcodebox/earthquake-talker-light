@@ -109,15 +109,15 @@ class KmaPewsSource:
 
     def poll(self) -> list[Message]:
         now_utc = self._now_utc()
-        if self.simulation_end_time_utc and now_utc >= self.simulation_end_time_utc:
-            logger.info("PEWS simulation duration elapsed; switching to realtime mode")
-            self.stop_simulation()
-            return []
-
         bin_time = datetime.fromtimestamp(
             (now_utc.timestamp() * 1000 - self.tide_ms) / 1000,
             tz=timezone.utc,
         )
+        if self.simulation_end_time_utc and bin_time >= self.simulation_end_time_utc:
+            logger.info("PEWS simulation duration elapsed; switching to realtime mode")
+            self.stop_simulation()
+            return []
+
         bin_time_str = bin_time.strftime("%Y%m%d%H%M%S")
         if self.previous_bin_time == bin_time_str:
             return []

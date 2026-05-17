@@ -138,11 +138,37 @@ def test_pews_source_simulation_uses_event_path_and_one_byte_header(tmp_path) ->
     assert urls == [f"{PEWS_DATA_PATH}/2017000407/20260517123456.b"]
 
 
+def test_pews_source_simulation_does_not_stop_for_past_event_wall_time(tmp_path) -> None:
+    urls: list[str] = []
+
+    def fetcher(url: str, _timeout: float) -> bytes:
+        urls.append(url)
+        return b""
+
+    source = KmaPewsSource(
+        output_dir=tmp_path,
+        simulation=("2017000407", "20171115142931"),
+        fetcher=fetcher,
+        now_provider=lambda: datetime(2026, 5, 17, 12, 34, 56, tzinfo=timezone.utc),
+    )
+
+    assert source.poll() == []
+    assert source.data_path == f"{PEWS_DATA_PATH}/2017000407"
+    assert source.head_length == 1
+    assert urls == [f"{PEWS_DATA_PATH}/2017000407/20171115052931.b"]
+
+
 def test_pews_source_stops_simulation_after_duration(tmp_path) -> None:
+    now_values = iter(
+        [
+            datetime(2026, 5, 17, 12, 34, 56, tzinfo=timezone.utc),
+            datetime(2026, 5, 17, 12, 40, 0, tzinfo=timezone.utc),
+        ]
+    )
     source = KmaPewsSource(
         output_dir=tmp_path,
         simulation=("2017000407", "20260517213456"),
-        now_provider=lambda: datetime(2026, 5, 17, 12, 40, 0, tzinfo=timezone.utc),
+        now_provider=lambda: next(now_values),
     )
 
     assert source.poll() == []
