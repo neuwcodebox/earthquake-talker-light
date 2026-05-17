@@ -29,7 +29,7 @@ class TelegramClient:
     def send(self, message: Message) -> None:
         if self.dry_run:
             logger.info("Dry-run Telegram message id=%s image=%s", message.id, bool(message.image_path))
-            print(message.render_text())
+            print(_telegram_body(message))
             if message.image_path:
                 print(f"[photo] {message.image_path}")
             return
@@ -66,7 +66,7 @@ class TelegramClient:
         assert message.image_path is not None
         fields = {
             "chat_id": self.chat_id or "",
-            "caption": message.render_text(),
+            "caption": _telegram_body(message),
             "disable_notification": json.dumps(message.disable_notification),
         }
         body, content_type = _encode_multipart(fields, "photo", message.image_path)
@@ -108,3 +108,9 @@ def _encode_multipart(fields: dict[str, str], file_field: str, file_path: Path) 
         ]
     )
     return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
+
+
+def _telegram_body(message: Message) -> str:
+    if message.image_path:
+        return message.text
+    return message.render_text()
