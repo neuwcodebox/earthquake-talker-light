@@ -23,6 +23,9 @@ def build_sources(settings: Settings) -> list[Source]:
             output_dir=settings.output_dir,
             interval_seconds=settings.pews_interval_seconds,
             timeout=settings.request_timeout_seconds,
+            simulation_earthquake_id=settings.pews_sim_earthquake_id,
+            simulation_start_time=settings.pews_sim_start_time,
+            simulation_duration_seconds=settings.pews_sim_duration_seconds,
         ),
     ]
     if settings.kma_api_key:

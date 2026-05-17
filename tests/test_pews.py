@@ -6,13 +6,17 @@ from PIL import Image
 
 from earthquake_talker_light.message import KST, Priority
 from earthquake_talker_light.sources.pews import (
+    PEWS_DATA_PATH,
     MAX_EQK_INFO_LEN,
+    HEAD_LENGTH,
+    KmaPewsSource,
     PewsEarthquake,
     build_pews_message,
     decode_grid_values,
     mmi_to_string,
     parse_earthquake,
     parse_phase,
+    parse_simulation_start_time,
     render_grid_image,
 )
 
@@ -104,3 +108,46 @@ def test_render_grid_image_writes_png(tmp_path) -> None:
         assert image.format == "PNG"
         assert image.width > 0
         assert image.height > 0
+
+
+def test_parse_simulation_start_time_uses_kst() -> None:
+    parsed = parse_simulation_start_time("20260517213456")
+
+    assert parsed.tzinfo == KST
+    assert parsed.astimezone(timezone.utc) == datetime(2026, 5, 17, 12, 34, 56, tzinfo=timezone.utc)
+
+
+def test_pews_source_simulation_uses_event_path_and_one_byte_header(tmp_path) -> None:
+    urls: list[str] = []
+
+    def fetcher(url: str, _timeout: float) -> bytes:
+        urls.append(url)
+        return b""
+
+    source = KmaPewsSource(
+        output_dir=tmp_path,
+        simulation_earthquake_id="2017000407",
+        simulation_start_time="20260517213456",
+        fetcher=fetcher,
+        now_provider=lambda: datetime(2026, 5, 17, 12, 34, 56, tzinfo=timezone.utc),
+    )
+
+    assert source.data_path == f"{PEWS_DATA_PATH}/2017000407"
+    assert source.head_length == 1
+    assert source.tide_ms == 0
+    assert source.poll() == []
+    assert urls == [f"{PEWS_DATA_PATH}/2017000407/20260517123456.b"]
+
+
+def test_pews_source_stops_simulation_after_duration(tmp_path) -> None:
+    source = KmaPewsSource(
+        output_dir=tmp_path,
+        simulation_earthquake_id="2017000407",
+        simulation_start_time="20260517213456",
+        simulation_duration_seconds=1,
+        now_provider=lambda: datetime(2026, 5, 17, 12, 34, 58, tzinfo=timezone.utc),
+    )
+
+    assert source.poll() == []
+    assert source.data_path == PEWS_DATA_PATH
+    assert source.head_length == HEAD_LENGTH

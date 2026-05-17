@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 from typing import Callable
@@ -85,19 +85,41 @@ class KmaPewsSource:
         timeout: float = 15.0,
         data_path: str = PEWS_DATA_PATH,
         fetcher: Callable[[str, float], bytes] | None = None,
+        simulation_earthquake_id: str | None = None,
+        simulation_start_time: str | None = None,
+        simulation_duration_seconds: float = 300.0,
+        now_provider: Callable[[], datetime] | None = None,
     ) -> None:
         self.previous_bin_time: str | None = None
         self.previous_alarm_id: str | None = None
         self.output_dir = output_dir
         self.interval_seconds = interval_seconds
         self.timeout = timeout
+        self.base_data_path = data_path.rstrip("/")
         self.data_path = data_path.rstrip("/")
         self.fetcher = fetcher or self._fetch
+        self.now_provider = now_provider or (lambda: datetime.now(timezone.utc))
         self.tide_ms = 1000.0
+        self.head_length = HEAD_LENGTH
+        self.simulation_end_time_utc: datetime | None = None
+
+        if bool(simulation_earthquake_id) != bool(simulation_start_time):
+            raise ValueError("simulation_earthquake_id and simulation_start_time must be set together")
+        if simulation_earthquake_id and simulation_start_time:
+            self.start_simulation(
+                simulation_earthquake_id,
+                simulation_start_time,
+                duration_seconds=simulation_duration_seconds,
+            )
 
     def poll(self) -> list[Message]:
+        now_utc = self._now_utc()
+        if self.simulation_end_time_utc and now_utc >= self.simulation_end_time_utc:
+            self.stop_simulation()
+            return []
+
         bin_time = datetime.fromtimestamp(
-            (datetime.now(timezone.utc).timestamp() * 1000 - self.tide_ms) / 1000,
+            (now_utc.timestamp() * 1000 - self.tide_ms) / 1000,
             tz=timezone.utc,
         )
         bin_time_str = bin_time.strftime("%Y%m%d%H%M%S")
@@ -113,8 +135,8 @@ class KmaPewsSource:
         if len(bytes_b) <= MAX_EQK_STR_LEN:
             return []
 
-        header_bits = bytes_to_bits(bytes_b[:HEAD_LENGTH])
-        body_bits = bytes_to_bits(bytes_b[HEAD_LENGTH:])
+        header_bits = bytes_to_bits(bytes_b[: self.head_length])
+        body_bits = bytes_to_bits(bytes_b[self.head_length :])
         phase = parse_phase(header_bits)
         if phase <= 1:
             return []
@@ -179,6 +201,44 @@ class KmaPewsSource:
     @staticmethod
     def _fetch(url: str, timeout: float) -> bytes:
         return fetch_bytes(url, timeout=timeout).body
+
+    def start_simulation(
+        self,
+        earthquake_id: str,
+        start_time: str,
+        *,
+        duration_seconds: float = 300.0,
+    ) -> None:
+        start_kst = parse_simulation_start_time(start_time)
+        start_utc = start_kst.astimezone(timezone.utc)
+        self.data_path = f"{self.base_data_path}/{earthquake_id}"
+        self.head_length = 1
+        self.tide_ms = (self._now_utc().astimezone(KST) - start_kst).total_seconds() * 1000
+        self.simulation_end_time_utc = start_utc + timedelta(seconds=duration_seconds)
+        self.previous_bin_time = None
+        self.previous_alarm_id = None
+
+    def stop_simulation(self) -> None:
+        self.data_path = self.base_data_path
+        self.head_length = HEAD_LENGTH
+        self.tide_ms = 1000.0
+        self.simulation_end_time_utc = None
+        self.previous_bin_time = None
+        self.previous_alarm_id = None
+
+    def _now_utc(self) -> datetime:
+        now = self.now_provider()
+        if now.tzinfo is None:
+            return now.replace(tzinfo=timezone.utc)
+        return now.astimezone(timezone.utc)
+
+
+def parse_simulation_start_time(value: str) -> datetime:
+    try:
+        parsed = datetime.strptime(value, "%Y%m%d%H%M%S")
+    except ValueError as error:
+        raise ValueError("PEWS simulation start time must be yyyyMMddHHmmss") from error
+    return parsed.replace(tzinfo=KST)
 
 
 def parse_phase(header_bits: str) -> int:

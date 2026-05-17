@@ -25,6 +25,15 @@ uv run python main.py
 DRY_RUN=1 uv run python main.py
 ```
 
+PEWS 과거 자료를 재생하려면 `.env`에 아래처럼 설정합니다. `PEWS_SIM_START_TIME`은 KST 기준 `yyyyMMddHHmmss` 형식입니다.
+
+```dotenv
+DRY_RUN=1
+PEWS_SIM_EARTHQUAKE_ID=2017000407
+PEWS_SIM_START_TIME=20171115142931
+PEWS_SIM_DURATION_SECONDS=300
+```
+
 ## 환경변수
 
 - `TELEGRAM_BOT_TOKEN`: 텔레그램 봇 토큰. `DRY_RUN=1`이 아니면 필수입니다.
@@ -35,5 +44,8 @@ DRY_RUN=1 uv run python main.py
 - `PEWS_INTERVAL_SECONDS`: 국내 지진 속보 조회 주기. 기본값은 `1`입니다.
 - `OVERSEAS_INTERVAL_SECONDS`: 국외 지진 조회 주기. 기본값은 `30`입니다.
 - `POLL_INTERVAL_SECONDS`: 메인 루프 sleep 주기. 기본값은 `1`입니다.
+- `PEWS_SIM_EARTHQUAKE_ID`: PEWS 시뮬레이션용 지진 ID입니다.
+- `PEWS_SIM_START_TIME`: PEWS 시뮬레이션 시작 시각입니다. KST 기준 `yyyyMMddHHmmss` 형식입니다.
+- `PEWS_SIM_DURATION_SECONDS`: PEWS 시뮬레이션 지속 시간입니다. 기본값은 `300`입니다.
 
 상세 사양은 [SPEC.md](SPEC.md), 진행 계획은 [PLAN.md](PLAN.md)를 참고하세요.

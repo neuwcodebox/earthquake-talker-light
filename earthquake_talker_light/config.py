@@ -33,6 +33,9 @@ class Settings:
     overseas_interval_seconds: float
     dry_run: bool
     request_timeout_seconds: float
+    pews_sim_earthquake_id: str | None
+    pews_sim_start_time: str | None
+    pews_sim_duration_seconds: float
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -48,12 +51,22 @@ class Settings:
             overseas_interval_seconds=_float_env("OVERSEAS_INTERVAL_SECONDS", 30.0),
             dry_run=_bool_env("DRY_RUN"),
             request_timeout_seconds=_float_env("REQUEST_TIMEOUT_SECONDS", 15.0),
+            pews_sim_earthquake_id=os.getenv("PEWS_SIM_EARTHQUAKE_ID"),
+            pews_sim_start_time=os.getenv("PEWS_SIM_START_TIME"),
+            pews_sim_duration_seconds=_float_env("PEWS_SIM_DURATION_SECONDS", 300.0),
         )
 
     def validate_for_send(self) -> None:
+        self.validate_pews_simulation()
         if self.dry_run:
             return
         if not self.telegram_bot_token:
             raise ValueError("TELEGRAM_BOT_TOKEN is required unless DRY_RUN=1")
         if not self.telegram_chat_id:
             raise ValueError("TELEGRAM_CHAT_ID is required unless DRY_RUN=1")
+
+    def validate_pews_simulation(self) -> None:
+        has_id = bool(self.pews_sim_earthquake_id)
+        has_start_time = bool(self.pews_sim_start_time)
+        if has_id != has_start_time:
+            raise ValueError("PEWS_SIM_EARTHQUAKE_ID and PEWS_SIM_START_TIME must be set together")

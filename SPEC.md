@@ -61,6 +61,9 @@
 - `OVERSEAS_INTERVAL_SECONDS`: 기본값 `30`
 - `DRY_RUN`: `1`, `true`, `yes`이면 텔레그램 API 호출 대신 콘솔 출력
 - 프로젝트 루트의 `.env` 파일을 자동으로 읽는다.
+- `PEWS_SIM_EARTHQUAKE_ID`: PEWS 과거 자료 재생용 지진 ID
+- `PEWS_SIM_START_TIME`: PEWS 과거 자료 재생 시작 시각, KST 기준 `yyyyMMddHHmmss`
+- `PEWS_SIM_DURATION_SECONDS`: PEWS 과거 자료 재생 지속 시간, 기본값 `300`
 
 메시지 우선순위에 따라 텔레그램 `disable_notification`을 정한다.
 
@@ -78,6 +81,15 @@
 - 국외 지진: 실행 후 최초 조회 결과의 이벤트 ID들을 기존 항목으로 간주하고 전송하지 않는다. 이후 새 이벤트 ID만 전송한다.
 
 프로세스 재시작 시에는 다시 최초 조회 결과를 기준 상태로 초기화한다.
+
+## PEWS 시뮬레이션
+
+`PEWS_SIM_EARTHQUAKE_ID`와 `PEWS_SIM_START_TIME`을 함께 설정하면 실시간 PEWS 경로 대신 `https://www.weather.go.kr/pews/data/{지진ID}` 경로를 사용한다.
+
+- 시뮬레이션 시작 시각은 KST 기준 `yyyyMMddHHmmss`로 해석한다.
+- C# 이전 구현과 동일하게 `.b` 파일 헤더 길이는 1바이트로 처리한다.
+- 현재 시각과 시뮬레이션 시작 시각의 차이를 오프셋으로 사용해 과거 초 단위 파일명을 순차 조회한다.
+- `PEWS_SIM_DURATION_SECONDS`가 지나면 시뮬레이션을 종료하고 실시간 PEWS 모드로 돌아간다.
 
 ## 실패 처리
 
