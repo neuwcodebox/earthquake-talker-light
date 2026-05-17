@@ -12,6 +12,8 @@ from earthquake_talker_light.sources.overseas import KmaOverseasEarthquakeSource
 from earthquake_talker_light.sources.pews import KmaPewsSource
 from earthquake_talker_light.telegram import TelegramClient
 
+logger = logging.getLogger(__name__)
+
 
 def build_sources(settings: Settings) -> list[Source]:
     sources: list[Source] = [
@@ -27,6 +29,7 @@ def build_sources(settings: Settings) -> list[Source]:
         ),
     ]
     if settings.kma_api_key:
+        logger.info("KMA_API_KEY is set; overseas earthquake source is enabled")
         sources.append(
             KmaOverseasEarthquakeSource(
                 settings.kma_api_key,
@@ -35,7 +38,9 @@ def build_sources(settings: Settings) -> list[Source]:
             )
         )
     else:
-        logging.info("KMA_API_KEY is not set; overseas earthquake source is disabled")
+        logger.info("KMA_API_KEY is not set; overseas earthquake source is disabled")
+    for source in sources:
+        logger.info("Configured source: %s interval=%.3fs", source.name, source.interval_seconds)
     return sources
 
 
@@ -45,12 +50,23 @@ def send_all(client: TelegramClient, messages: Iterable[Message]) -> None:
         for attempt in range(1, attempts + 1):
             try:
                 client.send(message)
+                logger.info(
+                    "Sent message id=%s sender=%s level=%s image=%s",
+                    message.id,
+                    message.sender,
+                    message.level.name,
+                    bool(message.image_path),
+                )
                 break
             except Exception:
                 if attempt >= attempts:
-                    logging.exception("Failed to send Telegram message after retries")
+                    logger.exception("Failed to send Telegram message after retries id=%s", message.id)
                 else:
-                    logging.exception("Failed to send Telegram message; retrying")
+                    logger.exception(
+                        "Failed to send Telegram message; retrying id=%s attempt=%d",
+                        message.id,
+                        attempt,
+                    )
                     time.sleep(1.0)
 
 
@@ -61,6 +77,13 @@ def main() -> None:
     )
     settings = Settings.from_env()
     settings.validate_for_send()
+    logger.info(
+        "Settings loaded dry_run=%s output_dir=%s poll_interval=%.3fs pews_simulation=%s",
+        settings.dry_run,
+        settings.output_dir,
+        settings.poll_interval_seconds,
+        bool(settings.pews_simulation),
+    )
 
     sources = build_sources(settings)
     client = TelegramClient(
@@ -71,7 +94,7 @@ def main() -> None:
     )
 
     next_due = {source.name: 0.0 for source in sources}
-    logging.info("Started earthquake talker with %d source(s)", len(sources))
+    logger.info("Started earthquake talker with %d source(s)", len(sources))
 
     try:
         while True:
@@ -82,13 +105,15 @@ def main() -> None:
                 next_due[source.name] = now + source.interval_seconds
                 try:
                     messages = source.poll()
+                    logger.debug("Source polled: %s messages=%d", source.name, len(messages))
                     if messages:
+                        logger.info("Source produced messages: %s count=%d", source.name, len(messages))
                         send_all(client, messages)
                 except Exception:
-                    logging.exception("Source failed: %s", source.name)
+                    logger.exception("Source failed: %s", source.name)
             time.sleep(settings.poll_interval_seconds)
     except KeyboardInterrupt:
-        logging.info("Interrupted")
+        logger.info("Interrupted")
 
 
 if __name__ == "__main__":

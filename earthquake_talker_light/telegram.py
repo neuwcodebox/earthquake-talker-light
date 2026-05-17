@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from .message import Message
+
+logger = logging.getLogger(__name__)
 
 
 class TelegramClient:
@@ -25,6 +28,7 @@ class TelegramClient:
 
     def send(self, message: Message) -> None:
         if self.dry_run:
+            logger.info("Dry-run Telegram message id=%s image=%s", message.id, bool(message.image_path))
             print(message.render_text())
             if message.image_path:
                 print(f"[photo] {message.image_path}")

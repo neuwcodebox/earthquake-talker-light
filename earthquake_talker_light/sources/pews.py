@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import json
+import logging
 from pathlib import Path
 from typing import Callable
 from urllib.parse import unquote
@@ -51,6 +52,7 @@ MMI_COLORS = [
 ]
 ASSET_DIR = Path(__file__).resolve().parents[1] / "assets"
 MAP_PATH = ASSET_DIR / "map.png"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -108,6 +110,7 @@ class KmaPewsSource:
     def poll(self) -> list[Message]:
         now_utc = self._now_utc()
         if self.simulation_end_time_utc and now_utc >= self.simulation_end_time_utc:
+            logger.info("PEWS simulation duration elapsed; switching to realtime mode")
             self.stop_simulation()
             return []
 
@@ -123,19 +126,23 @@ class KmaPewsSource:
         try:
             bytes_b = self.fetcher(f"{self.data_path}/{bin_time_str}.b", self.timeout)
         except NotFoundError:
+            logger.debug("PEWS binary not found bin_time=%s path=%s", bin_time_str, self.data_path)
             return []
 
         if len(bytes_b) <= MAX_EQK_STR_LEN:
+            logger.debug("PEWS binary too short bin_time=%s size=%d", bin_time_str, len(bytes_b))
             return []
 
         header_bits = bytes_to_bits(bytes_b[: self.head_length])
         body_bits = bytes_to_bits(bytes_b[self.head_length :])
         phase = parse_phase(header_bits)
         if phase <= 1:
+            logger.debug("PEWS phase has no earthquake info bin_time=%s phase=%d", bin_time_str, phase)
             return []
 
         quake = parse_earthquake(phase, body_bits, bytes_b[-MAX_EQK_STR_LEN:])
         if quake.alarm_id == self.previous_alarm_id:
+            logger.debug("PEWS duplicate alarm skipped alarm_id=%s", quake.alarm_id)
             return []
 
         info_text = self._request_location_text(quake.earthquake_id, phase) or quake.info_text
@@ -152,6 +159,13 @@ class KmaPewsSource:
             info_text=info_text,
         )
         self.previous_alarm_id = quake.alarm_id
+        logger.info(
+            "Detected PEWS earthquake id=%s phase=%d magnitude=%.1f intensity=%d",
+            quake.earthquake_id,
+            quake.phase,
+            quake.magnitude,
+            quake.intensity,
+        )
 
         messages = [build_pews_message(quake)]
         image_path = self._request_grid_image(quake)
@@ -164,6 +178,9 @@ class KmaPewsSource:
                     image_path=image_path,
                 )
             )
+            logger.info("Rendered PEWS grid image id=%s path=%s", quake.earthquake_id, image_path)
+        else:
+            logger.info("PEWS grid image unavailable id=%s phase=%d", quake.earthquake_id, quake.phase)
         return messages
 
     def _request_location_text(self, earthquake_id: str, phase: int) -> str | None:
@@ -173,6 +190,7 @@ class KmaPewsSource:
         try:
             raw = self.fetcher(f"{self.data_path}/{earthquake_id}.{suffix}", self.timeout)
         except Exception:
+            logger.debug("PEWS location text unavailable id=%s phase=%d", earthquake_id, phase)
             return None
         try:
             payload = json.loads(raw.decode("utf-8"))
@@ -180,6 +198,7 @@ class KmaPewsSource:
             return None
         value = payload.get("info_ko") if isinstance(payload, dict) else None
         if isinstance(value, str) and value.strip():
+            logger.debug("Loaded PEWS location text id=%s phase=%d", earthquake_id, phase)
             return value.strip()
         return None
 
@@ -188,6 +207,7 @@ class KmaPewsSource:
         try:
             raw = self.fetcher(f"{self.data_path}/{quake.earthquake_id}.{suffix}", self.timeout)
         except Exception:
+            logger.debug("PEWS grid bytes unavailable id=%s phase=%d", quake.earthquake_id, quake.phase)
             return None
         return render_grid_image(raw, quake, self.output_dir)
 
@@ -208,6 +228,13 @@ class KmaPewsSource:
         self.simulation_end_time_utc = start_utc + timedelta(seconds=SIMULATION_DURATION_SECONDS)
         self.previous_bin_time = None
         self.previous_alarm_id = None
+        logger.info(
+            "Started PEWS simulation id=%s start_time=%s end_time_utc=%s data_path=%s",
+            earthquake_id,
+            start_kst.isoformat(),
+            self.simulation_end_time_utc.isoformat(),
+            self.data_path,
+        )
 
     def stop_simulation(self) -> None:
         self.data_path = self.base_data_path
@@ -216,6 +243,7 @@ class KmaPewsSource:
         self.simulation_end_time_utc = None
         self.previous_bin_time = None
         self.previous_alarm_id = None
+        logger.info("Stopped PEWS simulation")
 
     def _now_utc(self) -> datetime:
         now = self.now_provider()

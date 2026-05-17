@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from html.parser import HTMLParser
 import html
+import logging
 import re
 from typing import Callable
 
@@ -9,6 +10,7 @@ from earthquake_talker_light.http import fetch_bytes
 from earthquake_talker_light.message import Message, Priority
 
 MICRO_ENDPOINT = "https://www.weather.go.kr/w/wnuri-eqk-vol/eqk/eqk-micro.do"
+logger = logging.getLogger(__name__)
 
 
 class _TextExtractor(HTMLParser):
@@ -58,16 +60,20 @@ class KmaMicroSource:
         raw_html = self.fetcher(MICRO_ENDPOINT, self.timeout)
         text = html_to_text(raw_html)
         if "지진" not in text and "여진" not in text:
+            logger.debug("Micro notice ignored because no earthquake keyword was found")
             return []
 
         if self.latest_text == text:
+            logger.debug("Micro notice unchanged")
             return []
 
         self.latest_text = text
         if not self.initialized:
             self.initialized = True
+            logger.info("Initialized micro notice baseline length=%d", len(text))
             return []
 
+        logger.info("Detected changed micro notice length=%d", len(text))
         return [
             Message(
                 sender="기상청 미소지진 안내",

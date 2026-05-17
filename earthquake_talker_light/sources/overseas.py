@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import logging
 import re
 from typing import Callable
 from urllib.parse import urlencode
@@ -13,6 +14,7 @@ from earthquake_talker_light.message import KST, Message, Priority
 OVERSEAS_ENDPOINT = "https://apihub.kma.go.kr/api/typ09/url/eqk/urlNewNotiEqk.do"
 STATE_TTL_SECONDS = 60 * 60 * 24 * 3
 EVENT_MAX_AGE_SECONDS = int(STATE_TTL_SECONDS * 0.9)
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -63,22 +65,42 @@ class KmaOverseasEarthquakeSource:
         items = parse_overseas_items(xml)
         previous_seen = set(self.seen)
         messages: list[Message] = []
+        domestic_impact_count = 0
 
         for item in items:
             if not has_domestic_impact(item):
                 continue
+            domestic_impact_count += 1
             occurred_at = parse_kst_compact_timestamp(item.occurred_raw)
             if occurred_at and now - occurred_at > timedelta(seconds=EVENT_MAX_AGE_SECONDS):
+                logger.debug("Skipped old overseas earthquake occurred_raw=%s", item.occurred_raw)
                 continue
             event_id = build_event_id(item.occurred_raw, item.issued_raw)
             if not event_id:
+                logger.warning("Skipped overseas earthquake without event id occurred=%s issued=%s", item.occurred_raw, item.issued_raw)
                 continue
             self.seen[event_id] = now.isoformat()
             if event_id in previous_seen and self.initialized:
                 continue
             if self.initialized:
+                logger.info("Detected overseas earthquake event_id=%s location=%s", event_id, item.eq_point or item.eq_area_name)
                 messages.append(build_message(item))
 
+        if not self.initialized:
+            logger.info(
+                "Initialized overseas baseline items=%d domestic_impact=%d seen=%d",
+                len(items),
+                domestic_impact_count,
+                len(self.seen),
+            )
+        else:
+            logger.debug(
+                "Overseas poll complete items=%d domestic_impact=%d new_messages=%d seen=%d",
+                len(items),
+                domestic_impact_count,
+                len(messages),
+                len(self.seen),
+            )
         self.initialized = True
         self._prune_seen(now)
         return messages
@@ -95,6 +117,8 @@ class KmaOverseasEarthquakeSource:
                 expired.append(key)
         for key in expired:
             self.seen.pop(key, None)
+        if expired:
+            logger.info("Pruned overseas seen events count=%d", len(expired))
 
     @staticmethod
     def _fetch(url: str, timeout: float) -> str:
