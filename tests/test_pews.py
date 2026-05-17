@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import earthquake_talker_light.sources.pews as pews_module
+from earthquake_talker_light.http import HttpResponse, NotFoundError
 from PIL import Image
 
 from earthquake_talker_light.message import KST, Priority
@@ -93,7 +95,9 @@ def test_pews_message_uses_expected_priority_and_text() -> None:
     assert "최대 진도 : V(5)" in message.text
 
 
-def test_pews_grid_photo_message_uses_csharp_style_caption(tmp_path) -> None:
+def test_pews_grid_photo_message_uses_csharp_style_caption(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(pews_module.time, "sleep", lambda _seconds: None)
+
     def fetcher(url: str, _timeout: float) -> bytes:
         if url.endswith(".b"):
             return _quake_binary()
@@ -113,6 +117,51 @@ def test_pews_grid_photo_message_uses_csharp_style_caption(tmp_path) -> None:
     assert photo_message.sender == "기상청 실시간 지진감시"
     assert photo_message.text == "기상청 실시간 지진감시"
     assert photo_message.image_path is not None
+
+
+def test_pews_grid_request_waits_200ms(tmp_path, monkeypatch) -> None:
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(pews_module.time, "sleep", sleep_calls.append)
+
+    def fetcher(url: str, _timeout: float) -> bytes:
+        if url.endswith(".b"):
+            return _quake_binary()
+        if url.endswith(".i"):
+            return bytes([0x45]) * 128
+        raise AssertionError(f"unexpected URL: {url}")
+
+    source = KmaPewsSource(
+        output_dir=tmp_path,
+        fetcher=fetcher,
+        now_provider=lambda: datetime(2026, 5, 17, 12, 34, 56, tzinfo=timezone.utc),
+    )
+
+    source.poll()
+
+    assert sleep_calls == [0.2]
+
+
+def test_pews_binary_fetch_syncs_tide_from_st_header(tmp_path, monkeypatch) -> None:
+    now = datetime(2026, 5, 17, 12, 34, 56, tzinfo=timezone.utc)
+    server_time = now.timestamp() - 2
+
+    def fake_fetch_bytes(url: str, timeout: float) -> HttpResponse:
+        if url.endswith(".b"):
+            return HttpResponse(body=_quake_binary(), headers={"ST": str(server_time)}, status=200)
+        if url.endswith(".i"):
+            return HttpResponse(body=bytes([0x45]) * 128, headers={}, status=200)
+        raise NotFoundError(url)
+
+    monkeypatch.setattr(pews_module, "fetch_bytes", fake_fetch_bytes)
+    monkeypatch.setattr(pews_module.time, "sleep", lambda _seconds: None)
+    source = KmaPewsSource(
+        output_dir=tmp_path,
+        now_provider=lambda: now,
+    )
+
+    source.poll()
+
+    assert source.tide_ms == 3000
 
 
 def test_decode_grid_values_maps_extended_i_to_one() -> None:

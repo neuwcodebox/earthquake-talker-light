@@ -23,7 +23,17 @@ class HttpResponse:
 
 
 class NotFoundError(Exception):
-    pass
+    def __init__(
+        self,
+        url: str | None = None,
+        *,
+        headers: dict[str, str] | None = None,
+        status: int = 404,
+    ) -> None:
+        super().__init__(url or "HTTP request failed with status 404")
+        self.url = url
+        self.headers = headers or {}
+        self.status = status
 
 
 class HttpStatusError(Exception):
@@ -40,11 +50,13 @@ def fetch_bytes(url: str, timeout: float = 15.0) -> HttpResponse:
             status = int(getattr(response, "status", response.getcode()))
             if status != 200:
                 if status == 404:
-                    raise NotFoundError(url)
+                    headers = {key: value for key, value in response.headers.items()}
+                    raise NotFoundError(url, headers=headers, status=status)
                 raise HttpStatusError(url, status)
             headers = {key: value for key, value in response.headers.items()}
             return HttpResponse(body=response.read(), headers=headers, status=status)
     except HTTPError as error:
         if error.code == 404:
-            raise NotFoundError(url) from error
+            headers = {key: value for key, value in error.headers.items()}
+            raise NotFoundError(url, headers=headers, status=error.code) from error
         raise

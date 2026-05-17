@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import logging
 from pathlib import Path
+import time
 from typing import Callable
 from urllib.parse import unquote
 
@@ -98,7 +99,7 @@ class KmaPewsSource:
         self.timeout = timeout
         self.base_data_path = data_path.rstrip("/")
         self.data_path = data_path.rstrip("/")
-        self.fetcher = fetcher or self._fetch
+        self.fetcher = fetcher
         self.now_provider = now_provider or (lambda: datetime.now(timezone.utc))
         self.tide_ms = 1000.0
         self.head_length = HEAD_LENGTH
@@ -124,8 +125,10 @@ class KmaPewsSource:
         self.previous_bin_time = bin_time_str
 
         try:
-            bytes_b = self.fetcher(f"{self.data_path}/{bin_time_str}.b", self.timeout)
-        except NotFoundError:
+            bytes_b = self._fetch_pews_binary(f"{self.data_path}/{bin_time_str}.b")
+        except NotFoundError as error:
+            if not self.simulation_end_time_utc and not self._sync_time_from_headers(error.headers):
+                self._nudge_tide()
             logger.debug("PEWS binary not found bin_time=%s path=%s", bin_time_str, self.data_path)
             return []
 
@@ -188,7 +191,7 @@ class KmaPewsSource:
         if not suffix:
             return None
         try:
-            raw = self.fetcher(f"{self.data_path}/{earthquake_id}.{suffix}", self.timeout)
+            raw = self._fetch_body(f"{self.data_path}/{earthquake_id}.{suffix}")
         except Exception:
             logger.debug("PEWS location text unavailable id=%s phase=%d", earthquake_id, phase)
             return None
@@ -204,16 +207,43 @@ class KmaPewsSource:
 
     def _request_grid_image(self, quake: PewsEarthquake) -> Path | None:
         suffix = "e" if quake.phase == 2 else "i"
+        time.sleep(0.2)
         try:
-            raw = self.fetcher(f"{self.data_path}/{quake.earthquake_id}.{suffix}", self.timeout)
+            raw = self._fetch_body(f"{self.data_path}/{quake.earthquake_id}.{suffix}")
         except Exception:
             logger.debug("PEWS grid bytes unavailable id=%s phase=%d", quake.earthquake_id, quake.phase)
             return None
         return render_grid_image(raw, quake, self.output_dir)
 
-    @staticmethod
-    def _fetch(url: str, timeout: float) -> bytes:
-        return fetch_bytes(url, timeout=timeout).body
+    def _fetch_pews_binary(self, url: str) -> bytes:
+        if self.fetcher:
+            return self.fetcher(url, self.timeout)
+        response = fetch_bytes(url, timeout=self.timeout)
+        if not self.simulation_end_time_utc:
+            self._sync_time_from_headers(response.headers)
+        return response.body
+
+    def _fetch_body(self, url: str) -> bytes:
+        if self.fetcher:
+            return self.fetcher(url, self.timeout)
+        return fetch_bytes(url, timeout=self.timeout).body
+
+    def _sync_time_from_headers(self, headers: dict[str, str]) -> bool:
+        st_value = next((value for key, value in headers.items() if key.lower() == "st"), None)
+        if not st_value:
+            return False
+        try:
+            server_time_ms = float(st_value) * 1000
+        except ValueError:
+            logger.debug("Invalid PEWS ST header value=%r", st_value)
+            return False
+        self.tide_ms = self._now_utc().timestamp() * 1000 - server_time_ms + 1000
+        logger.debug("Synchronized PEWS tide_ms=%.0f from ST=%s", self.tide_ms, st_value)
+        return True
+
+    def _nudge_tide(self) -> None:
+        self.tide_ms = self.tide_ms + 200 if self.tide_ms < 1000 else self.tide_ms - 200
+        logger.debug("Adjusted PEWS tide after missing binary tide_ms=%.0f", self.tide_ms)
 
     def start_simulation(
         self,
