@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from earthquake_talker_light.config import Settings
+import pytest
+
+from earthquake_talker_light.config import Settings, parse_pews_simulation
 
 
 def test_settings_loads_dotenv_and_interval_defaults(tmp_path, monkeypatch) -> None:
@@ -12,9 +14,7 @@ def test_settings_loads_dotenv_and_interval_defaults(tmp_path, monkeypatch) -> N
         "PEWS_INTERVAL_SECONDS",
         "OVERSEAS_INTERVAL_SECONDS",
         "DRY_RUN",
-        "PEWS_SIM_EARTHQUAKE_ID",
-        "PEWS_SIM_START_TIME",
-        "PEWS_SIM_DURATION_SECONDS",
+        "PEWS_SIMULATION",
     ]:
         monkeypatch.delenv(name, raising=False)
     (tmp_path / ".env").write_text(
@@ -35,21 +35,18 @@ def test_settings_loads_dotenv_and_interval_defaults(tmp_path, monkeypatch) -> N
     assert settings.dry_run is True
     assert settings.pews_interval_seconds == 1.0
     assert settings.overseas_interval_seconds == 30.0
-    assert settings.pews_sim_earthquake_id is None
-    assert settings.pews_sim_start_time is None
-    assert settings.pews_sim_duration_seconds == 300.0
+    assert settings.pews_simulation is None
 
 
-def test_settings_rejects_partial_pews_simulation(monkeypatch) -> None:
+def test_settings_loads_pews_simulation_from_single_env(monkeypatch) -> None:
     monkeypatch.setenv("DRY_RUN", "1")
-    monkeypatch.setenv("PEWS_SIM_EARTHQUAKE_ID", "2017000407")
-    monkeypatch.delenv("PEWS_SIM_START_TIME", raising=False)
+    monkeypatch.setenv("PEWS_SIMULATION", "2017000407:20171115142931")
 
     settings = Settings.from_env()
 
-    try:
-        settings.validate_for_send()
-    except ValueError as error:
-        assert "PEWS_SIM_EARTHQUAKE_ID" in str(error)
-    else:
-        raise AssertionError("expected partial PEWS simulation config to fail")
+    assert settings.pews_simulation == ("2017000407", "20171115142931")
+
+
+def test_parse_pews_simulation_rejects_bad_format() -> None:
+    with pytest.raises(ValueError, match="PEWS_SIMULATION"):
+        parse_pews_simulation("2017000407")

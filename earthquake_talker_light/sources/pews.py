@@ -14,6 +14,7 @@ from earthquake_talker_light.message import KST, Message, Priority
 
 PEWS_DATA_PATH = "https://www.weather.go.kr/pews/data"
 HEAD_LENGTH = 4
+SIMULATION_DURATION_SECONDS = 300.0
 MAX_EQK_STR_LEN = 60
 MAX_EQK_INFO_LEN = 120
 AREA_NAMES = [
@@ -85,9 +86,7 @@ class KmaPewsSource:
         timeout: float = 15.0,
         data_path: str = PEWS_DATA_PATH,
         fetcher: Callable[[str, float], bytes] | None = None,
-        simulation_earthquake_id: str | None = None,
-        simulation_start_time: str | None = None,
-        simulation_duration_seconds: float = 300.0,
+        simulation: tuple[str, str] | None = None,
         now_provider: Callable[[], datetime] | None = None,
     ) -> None:
         self.previous_bin_time: str | None = None
@@ -103,14 +102,8 @@ class KmaPewsSource:
         self.head_length = HEAD_LENGTH
         self.simulation_end_time_utc: datetime | None = None
 
-        if bool(simulation_earthquake_id) != bool(simulation_start_time):
-            raise ValueError("simulation_earthquake_id and simulation_start_time must be set together")
-        if simulation_earthquake_id and simulation_start_time:
-            self.start_simulation(
-                simulation_earthquake_id,
-                simulation_start_time,
-                duration_seconds=simulation_duration_seconds,
-            )
+        if simulation:
+            self.start_simulation(*simulation)
 
     def poll(self) -> list[Message]:
         now_utc = self._now_utc()
@@ -206,15 +199,13 @@ class KmaPewsSource:
         self,
         earthquake_id: str,
         start_time: str,
-        *,
-        duration_seconds: float = 300.0,
     ) -> None:
         start_kst = parse_simulation_start_time(start_time)
         start_utc = start_kst.astimezone(timezone.utc)
         self.data_path = f"{self.base_data_path}/{earthquake_id}"
         self.head_length = 1
         self.tide_ms = (self._now_utc().astimezone(KST) - start_kst).total_seconds() * 1000
-        self.simulation_end_time_utc = start_utc + timedelta(seconds=duration_seconds)
+        self.simulation_end_time_utc = start_utc + timedelta(seconds=SIMULATION_DURATION_SECONDS)
         self.previous_bin_time = None
         self.previous_alarm_id = None
 

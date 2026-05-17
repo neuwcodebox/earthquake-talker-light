@@ -126,8 +126,7 @@ def test_pews_source_simulation_uses_event_path_and_one_byte_header(tmp_path) ->
 
     source = KmaPewsSource(
         output_dir=tmp_path,
-        simulation_earthquake_id="2017000407",
-        simulation_start_time="20260517213456",
+        simulation=("2017000407", "20260517213456"),
         fetcher=fetcher,
         now_provider=lambda: datetime(2026, 5, 17, 12, 34, 56, tzinfo=timezone.utc),
     )
@@ -142,10 +141,8 @@ def test_pews_source_simulation_uses_event_path_and_one_byte_header(tmp_path) ->
 def test_pews_source_stops_simulation_after_duration(tmp_path) -> None:
     source = KmaPewsSource(
         output_dir=tmp_path,
-        simulation_earthquake_id="2017000407",
-        simulation_start_time="20260517213456",
-        simulation_duration_seconds=1,
-        now_provider=lambda: datetime(2026, 5, 17, 12, 34, 58, tzinfo=timezone.utc),
+        simulation=("2017000407", "20260517213456"),
+        now_provider=lambda: datetime(2026, 5, 17, 12, 40, 0, tzinfo=timezone.utc),
     )
 
     assert source.poll() == []
