@@ -44,6 +44,7 @@ def test_parse_overseas_items_keeps_domestic_impact_fields() -> None:
 def test_parse_intensity_supports_roman_and_numeric_labels() -> None:
     assert parse_intensity("Ⅴ") == 5
     assert parse_intensity("VII") == 7
+    assert parse_intensity("VII 이상") == 7
     assert parse_intensity("국내 최대 4") == 4
 
 

@@ -240,7 +240,7 @@ def parse_intensity(value: str | None) -> int | None:
     numeric = re.search(r"\d+", compact)
     if numeric:
         return int(numeric.group(0))
-    for label, intensity in labels.items():
+    for label, intensity in sorted(labels.items(), key=lambda item: len(item[0]), reverse=True):
         if label in compact:
             return intensity
     return None
