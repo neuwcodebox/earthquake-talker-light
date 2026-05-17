@@ -20,12 +20,22 @@ class _TextExtractor(HTMLParser):
         if data.strip():
             self.parts.append(data)
 
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "br":
+            self.parts.append("\n")
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "br":
+            self.parts.append("\n")
+
 
 def html_to_text(source: str) -> str:
     parser = _TextExtractor()
     parser.feed(source)
     text = html.unescape(" ".join(parser.parts))
-    return re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"[^\S\n]+", " ", text)
+    text = re.sub(r" *\n *", "\n", text)
+    return re.sub(r"\n{2,}", "\n", text).strip()
 
 
 class KmaMicroSource:

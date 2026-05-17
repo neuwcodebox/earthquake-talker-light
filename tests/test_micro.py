@@ -7,6 +7,20 @@ def test_html_to_text_normalizes_kma_micro_html() -> None:
     assert html_to_text(html) == "미소지진 포항 인근 여진 안내"
 
 
+def test_html_to_text_preserves_br_as_newline() -> None:
+    html = (
+        '<p class="p_hypen"><span style="color:#0000ff; font-weight:bold;">'
+        "[최근 미소지진 발생 현황(규모 2.0미만)]</span><br/> "
+        "2026/05/17 05:08:57 경북 울진군 북쪽 0.7km 지역 "
+        "&#40;규모:0.9 / 깊이:9km&#41;</p>"
+    )
+
+    assert html_to_text(html) == (
+        "[최근 미소지진 발생 현황(규모 2.0미만)]\n"
+        "2026/05/17 05:08:57 경북 울진군 북쪽 0.7km 지역 (규모:0.9 / 깊이:9km)"
+    )
+
+
 def test_micro_source_skips_initial_then_emits_changed_notice() -> None:
     responses = iter(
         [
