@@ -2,20 +2,18 @@
 
 ## 목표
 
-`earthquake-talker-light`는 기상청 지진 관련 정보를 주기적으로 수집해 텔레그램 채널로 전송하는 Python 봇이다. 기존 C# `EarthquakeTalker`의 핵심 기능만 이식하며, 장기 실행에 필요한 상태 저장과 실패 복구는 단순한 파일 기반으로 처리한다.
+`earthquake-talker-light`는 기상청 지진 관련 정보를 주기적으로 수집해 텔레그램 채널로 전송하는 Python 봇이다. 장기 실행에 필요한 상태 저장과 실패 복구는 단순한 파일 기반으로 처리한다.
 
 ## 범위
 
 구현 대상은 다음 세 가지 수집원이다.
 
 1. 미소지진 안내
-   - 참고: `references/EarthquakeTalker/EarthquakeTalker/KmaMicro.cs`
    - URL: `https://www.weather.go.kr/w/wnuri-eqk-vol/eqk/eqk-micro.do`
    - HTML을 텍스트로 정규화한 뒤 `지진` 또는 `여진`이 포함된 최신 안내가 이전 안내와 다르면 전송한다.
    - 최초 실행 시 발견한 기존 안내는 상태에 저장만 하고 전송하지 않는다.
 
 2. 국내 지진 신속/상세정보
-   - 참고: `references/EarthquakeTalker/EarthquakeTalker/KmaPews.cs`
    - 기본 데이터 경로: `https://www.weather.go.kr/pews/data`
    - 현재 UTC 시각에서 서버 오프셋을 뺀 `yyyyMMddHHmmss` 파일명을 사용해 `.b` 바이너리 파일을 조회한다.
    - `.b` 파일 헤더로 단계와 관측소 목록 갱신 여부를 판정한다.
@@ -31,11 +29,10 @@
      - phase 2: `{지진ID}.e`
      - phase 3: `{지진ID}.i`
      - 4비트 단위 MMI 값을 지도 격자에 색칠하고 진앙 표시를 찍어 PNG를 만든다.
-     - 기본 지도 오버레이는 `references/EarthquakeTalker/Resources/map.png`를 사용한다.
+     - 기본 지도 오버레이는 패키지 내부 `earthquake_talker_light/assets/map.png`를 사용한다.
    - 관측소 실시간 진도 요약은 C# 구현상 법적 문제 주석으로 전송이 비활성화되어 있으므로 이번 Python 버전에서도 전송하지 않는다. 다만 `.s` 관측소 갱신과 PEWS phase 파싱에는 영향이 없도록 필요한 최소 상태만 유지한다.
 
 3. 국내 영향이 있는 국외 지진
-   - 참고: `references/disaster-feed/src/modules/ingest/app/sources/kma-overseas-earthquake.source.ts`
    - URL: `https://apihub.kma.go.kr/api/typ09/url/eqk/urlNewNotiEqk.do`
    - 환경변수 `KMA_API_KEY`가 있을 때만 활성화한다.
    - 요청 파라미터:

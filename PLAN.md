@@ -3,9 +3,9 @@
 ## 진행 상황
 
 - [x] 참고 소스 확인
-  - `KmaMicro.cs`: 미소지진 HTML 텍스트 변경 감지
-  - `KmaPews.cs`: PEWS 바이너리 phase 파싱, 메시지 포맷, 그리드 이미지 생성
-  - `kma-overseas-earthquake.source.ts`: APIHub 국외 지진 XML 파싱과 국내 영향 필터
+  - 미소지진 HTML 텍스트 변경 감지
+  - PEWS 바이너리 phase 파싱, 메시지 포맷, 그리드 이미지 생성
+  - APIHub 국외 지진 XML 파싱과 국내 영향 필터
 - [x] Python 버전 사양 작성
 - [x] 프로젝트 구조 구성
 - [x] 수집원 구현

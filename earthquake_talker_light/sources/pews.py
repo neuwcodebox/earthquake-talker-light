@@ -48,6 +48,8 @@ MMI_COLORS = [
     "#4C2600",
     "#000000",
 ]
+ASSET_DIR = Path(__file__).resolve().parents[1] / "assets"
+MAP_PATH = ASSET_DIR / "map.png"
 
 
 @dataclass(frozen=True)
@@ -269,9 +271,8 @@ def build_pews_message(quake: PewsEarthquake) -> Message:
 def render_grid_image(grid_bytes: bytes, quake: PewsEarthquake, output_dir: Path) -> Path:
     grid_dir = output_dir / "grids"
     grid_dir.mkdir(parents=True, exist_ok=True)
-    map_path = Path("references/EarthquakeTalker/Resources/map.png")
-    if map_path.exists():
-        base_map = Image.open(map_path).convert("RGBA")
+    if MAP_PATH.exists():
+        base_map = Image.open(MAP_PATH).convert("RGBA")
         canvas = Image.new("RGBA", base_map.size, (211, 211, 211, 255))
     else:
         base_map = None
