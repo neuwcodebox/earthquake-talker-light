@@ -173,7 +173,7 @@ class KmaPewsSource:
             messages.append(
                 Message(
                     sender="기상청 실시간 지진감시",
-                    text=f"진도 그리드 이미지\n지진 ID: {quake.earthquake_id}",
+                    text="기상청 실시간 지진감시",
                     level=Priority.NORMAL,
                     image_path=image_path,
                 )

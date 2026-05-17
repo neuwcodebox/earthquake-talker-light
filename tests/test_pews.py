@@ -42,6 +42,17 @@ def _quake_body_bits() -> str:
     return fields.ljust(MAX_EQK_INFO_LEN, "0") + ("0" * 480)
 
 
+def _bytes_from_bits(bits: str) -> bytes:
+    padded = bits + "0" * ((8 - len(bits) % 8) % 8)
+    return bytes(int(padded[index : index + 8], 2) for index in range(0, len(padded), 8))
+
+
+def _quake_binary(phase: int = 3) -> bytes:
+    header_bits = ("01100000" if phase == 3 else "01000000") + ("0" * 24)
+    body = _bytes_from_bits(_quake_body_bits())
+    return _bytes_from_bits(header_bits) + body
+
+
 def test_parse_phase_from_header_bits() -> None:
     assert parse_phase("00000000") == 1
     assert parse_phase("01000000") == 2
@@ -80,6 +91,28 @@ def test_pews_message_uses_expected_priority_and_text() -> None:
     assert message.level == Priority.CRITICAL
     assert "지진 신속정보" in message.text
     assert "최대 진도 : V(5)" in message.text
+
+
+def test_pews_grid_photo_message_uses_csharp_style_caption(tmp_path) -> None:
+    def fetcher(url: str, _timeout: float) -> bytes:
+        if url.endswith(".b"):
+            return _quake_binary()
+        if url.endswith(".i"):
+            return bytes([0x45]) * 128
+        raise AssertionError(f"unexpected URL: {url}")
+
+    source = KmaPewsSource(
+        output_dir=tmp_path,
+        fetcher=fetcher,
+        now_provider=lambda: datetime(2026, 5, 17, 12, 34, 56, tzinfo=timezone.utc),
+    )
+    messages = source.poll()
+
+    assert len(messages) == 2
+    photo_message = messages[1]
+    assert photo_message.sender == "기상청 실시간 지진감시"
+    assert photo_message.text == "기상청 실시간 지진감시"
+    assert photo_message.image_path is not None
 
 
 def test_decode_grid_values_maps_extended_i_to_one() -> None:
