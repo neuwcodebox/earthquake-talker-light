@@ -4,6 +4,12 @@
 
 ## 실행
 
+먼저 예제 파일을 복사해 값을 채웁니다.
+
+```bash
+cp .env.example .env
+```
+
 ```bash
 TELEGRAM_BOT_TOKEN=... \
 TELEGRAM_CHAT_ID=... \
