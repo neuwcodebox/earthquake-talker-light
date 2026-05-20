@@ -172,7 +172,12 @@ def parse_overseas_items(xml: str) -> list[OverseasEarthquakeItem]:
 
 
 def has_domestic_impact(item: OverseasEarthquakeItem) -> bool:
-    return bool(item.max_intensity and item.intensity_areas)
+    return has_domestic_impact_value(item.max_intensity) or has_domestic_impact_value(item.intensity_areas)
+
+
+def has_domestic_impact_value(value: str | None) -> bool:
+    normalized = normalize_text(value)
+    return bool(normalized and normalized != "-")
 
 
 def build_message(item: OverseasEarthquakeItem) -> Message:
