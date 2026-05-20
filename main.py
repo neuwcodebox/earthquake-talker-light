@@ -5,6 +5,7 @@ import time
 from collections.abc import Iterable
 
 from earthquake_talker_light.config import Settings
+from earthquake_talker_light.http import TransientHttpError
 from earthquake_talker_light.message import Message
 from earthquake_talker_light.sources import Source
 from earthquake_talker_light.sources.micro import KmaMicroSource
@@ -109,6 +110,12 @@ def main() -> None:
                     if messages:
                         logger.info("Source produced messages: %s count=%d", source.name, len(messages))
                         send_all(client, messages)
+                except TransientHttpError as error:
+                    logger.warning(
+                        "Source temporarily unavailable: %s reason=%s",
+                        source.name,
+                        error.reason,
+                    )
                 except Exception:
                     logger.exception("Source failed: %s", source.name)
             time.sleep(settings.poll_interval_seconds)

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from urllib.error import HTTPError
+from http.client import IncompleteRead
+import socket
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
@@ -43,6 +45,13 @@ class HttpStatusError(Exception):
         self.status = status
 
 
+class TransientHttpError(Exception):
+    def __init__(self, url: str, reason: str):
+        super().__init__(f"Transient HTTP request failure: {reason}: {url}")
+        self.url = url
+        self.reason = reason
+
+
 def fetch_bytes(url: str, timeout: float = 15.0) -> HttpResponse:
     request = Request(url, headers={"User-Agent": DEFAULT_USER_AGENT})
     try:
@@ -60,3 +69,5 @@ def fetch_bytes(url: str, timeout: float = 15.0) -> HttpResponse:
             headers = {key: value for key, value in error.headers.items()}
             raise NotFoundError(url, headers=headers, status=error.code) from error
         raise
+    except (TimeoutError, socket.timeout, IncompleteRead, URLError) as error:
+        raise TransientHttpError(url, str(error)) from error
