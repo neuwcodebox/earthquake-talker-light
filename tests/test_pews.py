@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import earthquake_talker_light.sources.pews as pews_module
 from earthquake_talker_light.http import HttpResponse, NotFoundError
@@ -28,7 +28,8 @@ def _bits(value: int, width: int) -> str:
 
 
 def _quake_body_bits() -> str:
-    unix_time = int(datetime(2026, 5, 17, 12, 34, 56, tzinfo=timezone.utc).timestamp())
+    occurred_at = datetime(2026, 5, 17, 21, 34, 56, tzinfo=KST)
+    unix_time = int((occurred_at.astimezone(timezone.utc) - timedelta(hours=9)).timestamp())
     fields = "".join(
         [
             _bits(512, 10),
@@ -72,6 +73,7 @@ def test_parse_earthquake_extracts_pews_fields() -> None:
     assert quake.intensity == 5
     assert quake.max_areas == ["서울"]
     assert quake.occurred_at.tzinfo == KST
+    assert quake.occurred_at == datetime(2026, 5, 17, 21, 34, 56, tzinfo=KST)
 
 
 def test_pews_message_uses_expected_priority_and_text() -> None:
@@ -92,7 +94,27 @@ def test_pews_message_uses_expected_priority_and_text() -> None:
 
     assert message.level == Priority.CRITICAL
     assert "지진 신속정보" in message.text
+    assert "발생 시각 : 2026-05-17 21:34:56" in message.text
     assert "최대 진도 : V(5)" in message.text
+
+
+def test_pews_message_formats_occurrence_time_as_kst() -> None:
+    quake = PewsEarthquake(
+        phase=3,
+        latitude=35.12,
+        longitude=127.03,
+        magnitude=4.2,
+        depth_km=12.3,
+        occurred_at=datetime(2026, 5, 17, 12, 34, 56, tzinfo=timezone.utc),
+        earthquake_id="2012345",
+        intensity=5,
+        max_areas=["서울"],
+        info_text="전북 익산 북쪽 5km 지역",
+    )
+
+    message = build_pews_message(quake)
+
+    assert "발생 시각 : 2026-05-17 21:34:56" in message.text
 
 
 def test_pews_grid_photo_message_uses_csharp_style_caption(tmp_path, monkeypatch) -> None:

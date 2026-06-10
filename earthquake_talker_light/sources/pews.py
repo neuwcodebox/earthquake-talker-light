@@ -313,7 +313,7 @@ def parse_earthquake(phase: int, body_bits: str, info_bytes: bytes) -> PewsEarth
     magnitude = int(data[20:27], 2) / 10
     depth_km = int(data[27:37], 2) / 10
     unix_time = int(data[37:69], 2)
-    occurred_at = datetime.fromtimestamp(unix_time, tz=timezone.utc).astimezone(KST)
+    occurred_at = datetime.fromtimestamp(unix_time + 9 * 3600, tz=timezone.utc).astimezone(KST)
     earthquake_id = "20" + str(int(data[69:95], 2))
     intensity = int(data[95:99], 2)
     max_area_bits = data[99:116]
@@ -341,11 +341,12 @@ def parse_earthquake(phase: int, body_bits: str, info_bytes: bytes) -> PewsEarth
 
 
 def build_pews_message(quake: PewsEarthquake) -> Message:
+    occurred_at = quake.occurred_at.astimezone(KST)
     if quake.phase == 2:
         lines = [
             "⚠️ 지진 신속정보가 발표되었습니다.",
             f"정보 : {quake.info_text}",
-            f"발생 시각 : {quake.occurred_at:%Y-%m-%d %H:%M:%S}",
+            f"발생 시각 : {occurred_at:%Y-%m-%d %H:%M:%S}",
             f"추정 규모 : {quake.magnitude:.1f}",
             f"최대 진도 : {mmi_to_string(quake.intensity)}({quake.intensity})",
             "대피 요령 : https://www.weather.go.kr/pews/man/m.html",
@@ -364,7 +365,7 @@ def build_pews_message(quake: PewsEarthquake) -> Message:
     lines = [
         "지진 상세정보가 발표되었습니다.",
         f"정보 : {quake.info_text}",
-        f"발생 시각 : {quake.occurred_at:%Y-%m-%d %H:%M:%S}",
+        f"발생 시각 : {occurred_at:%Y-%m-%d %H:%M:%S}",
         f"규모 : {quake.magnitude:.1f}",
         f"깊이 : {depth}",
         f"최대 진도 : {mmi_to_string(quake.intensity)}({quake.intensity})",
