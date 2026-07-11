@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from html.parser import HTMLParser
 import html
 import logging
@@ -10,6 +11,7 @@ from earthquake_talker_light.http import fetch_bytes
 from earthquake_talker_light.message import Message, Priority
 
 MICRO_ENDPOINT = "https://www.weather.go.kr/w/wnuri-eqk-vol/eqk/eqk-micro.do"
+NOTICE_HISTORY_SIZE = 10
 logger = logging.getLogger(__name__)
 
 
@@ -50,7 +52,7 @@ class KmaMicroSource:
         timeout: float = 15.0,
         fetcher: Callable[[str, float], str] | None = None,
     ) -> None:
-        self.latest_text: str | None = None
+        self.recent_texts: deque[str] = deque(maxlen=NOTICE_HISTORY_SIZE)
         self.initialized = False
         self.interval_seconds = interval_seconds
         self.timeout = timeout
@@ -63,11 +65,11 @@ class KmaMicroSource:
             logger.debug("Micro notice ignored because no earthquake keyword was found")
             return []
 
-        if self.latest_text == text:
-            logger.debug("Micro notice unchanged")
+        if text in self.recent_texts:
+            logger.debug("Micro notice already seen recently")
             return []
 
-        self.latest_text = text
+        self.recent_texts.append(text)
         if not self.initialized:
             self.initialized = True
             logger.info("Initialized micro notice baseline length=%d", len(text))

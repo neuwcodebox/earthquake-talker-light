@@ -36,3 +36,22 @@ def test_micro_source_skips_initial_then_emits_changed_notice() -> None:
     assert len(messages) == 1
     assert messages[0].sender == "기상청 미소지진 안내"
     assert messages[0].text == "새 지진 안내"
+
+
+def test_micro_source_does_not_reemit_recent_notice_when_api_reverts() -> None:
+    responses = iter(
+        [
+            "<p>첫 지진 안내</p>",
+            "<p>새 지진 안내</p>",
+            "<p>첫 지진 안내</p>",
+            "<p>새 지진 안내</p>",
+            "<p>더 새 지진 안내</p>",
+        ]
+    )
+    source = KmaMicroSource(fetcher=lambda _url, _timeout: next(responses))
+
+    assert source.poll() == []
+    assert [message.text for message in source.poll()] == ["새 지진 안내"]
+    assert source.poll() == []
+    assert source.poll() == []
+    assert [message.text for message in source.poll()] == ["더 새 지진 안내"]
