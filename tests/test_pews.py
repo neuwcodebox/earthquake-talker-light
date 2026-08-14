@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 
 import earthquake_talker_light.sources.pews as pews_module
@@ -139,6 +140,22 @@ def test_pews_grid_photo_message_uses_csharp_style_caption(tmp_path, monkeypatch
     assert photo_message.sender == "기상청 실시간 지진감시"
     assert photo_message.text == "기상청 실시간 지진감시"
     assert photo_message.image_path is not None
+    capture_dir = tmp_path / "pews-captures" / "2012345"
+    assert (capture_dir / "phase3.b").read_bytes() == _quake_binary()
+    assert (capture_dir / "phase3.i").read_bytes() == bytes([0x45]) * 128
+
+
+def test_pews_capture_retention_keeps_only_the_newest_events(tmp_path) -> None:
+    captures_dir = tmp_path / "pews-captures"
+    for index in range(pews_module.MAX_CAPTURED_PEWS_EVENTS + 1):
+        event_dir = captures_dir / f"event-{index:02d}"
+        event_dir.mkdir(parents=True)
+        os.utime(event_dir, (index, index))
+
+    KmaPewsSource._prune_captures(captures_dir)
+
+    assert len(list(captures_dir.iterdir())) == pews_module.MAX_CAPTURED_PEWS_EVENTS
+    assert not (captures_dir / "event-00").exists()
 
 
 def test_pews_grid_request_waits_200ms(tmp_path, monkeypatch) -> None:

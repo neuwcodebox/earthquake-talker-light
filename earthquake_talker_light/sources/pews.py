@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import logging
 from pathlib import Path
+import shutil
 import time
 from typing import Callable
 from urllib.parse import unquote
@@ -19,6 +20,8 @@ HEAD_LENGTH = 4
 SIMULATION_DURATION_SECONDS = 300.0
 MAX_EQK_STR_LEN = 60
 MAX_EQK_INFO_LEN = 120
+MAX_CAPTURED_PEWS_EVENTS = 20
+PEWS_CAPTURE_DIR_NAME = "pews-captures"
 AREA_NAMES = [
     "서울",
     "부산",
@@ -148,6 +151,7 @@ class KmaPewsSource:
             logger.debug("PEWS duplicate alarm skipped alarm_id=%s", quake.alarm_id)
             return []
 
+        self._save_capture(quake.earthquake_id, phase, ".b", bytes_b)
         info_text = self._request_location_text(quake.earthquake_id, phase) or quake.info_text
         quake = PewsEarthquake(
             phase=quake.phase,
@@ -195,6 +199,7 @@ class KmaPewsSource:
         except Exception:
             logger.debug("PEWS location text unavailable id=%s phase=%d", earthquake_id, phase)
             return None
+        self._save_capture(earthquake_id, phase, f".{suffix}", raw)
         try:
             payload = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
@@ -213,7 +218,28 @@ class KmaPewsSource:
         except Exception:
             logger.debug("PEWS grid bytes unavailable id=%s phase=%d", quake.earthquake_id, quake.phase)
             return None
+        self._save_capture(quake.earthquake_id, quake.phase, f".{suffix}", raw)
         return render_grid_image(raw, quake, self.output_dir)
+
+    def _save_capture(self, earthquake_id: str, phase: int, suffix: str, data: bytes) -> None:
+        """Retain raw PEWS inputs for a bounded number of detected events."""
+        capture_dir = self.output_dir / PEWS_CAPTURE_DIR_NAME / earthquake_id
+        try:
+            capture_dir.mkdir(parents=True, exist_ok=True)
+            (capture_dir / f"phase{phase}{suffix}").write_bytes(data)
+            self._prune_captures(capture_dir.parent)
+        except OSError:
+            logger.warning("Unable to save PEWS capture id=%s phase=%d", earthquake_id, phase, exc_info=True)
+
+    @staticmethod
+    def _prune_captures(captures_dir: Path) -> None:
+        event_dirs = sorted(
+            (path for path in captures_dir.iterdir() if path.is_dir()),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        for event_dir in event_dirs[MAX_CAPTURED_PEWS_EVENTS:]:
+            shutil.rmtree(event_dir)
 
     def _fetch_pews_binary(self, url: str) -> bytes:
         if self.fetcher:
