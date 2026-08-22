@@ -14,25 +14,14 @@ from earthquake_talker_light.sources.pews import (
     HEAD_LENGTH,
     KmaPewsSource,
     PewsEarthquake,
-    build_intensity_detail_url,
     build_pews_message,
     decode_grid_values,
     mmi_to_string,
     parse_earthquake,
-    parse_official_intensity_areas,
     parse_phase,
     parse_simulation_start_time,
     render_grid_image,
 )
-
-
-_INTENSITY_HTML = """
-<tbody id="eqList">
-  <tr id="sido_12"><th>전남광주<button>+</button></th><td><img src="images/roma_2.png"></td></tr>
-  <tr class="sigungu_12"><th>해남군</th><td><img src="images/roma_2.png"></td></tr>
-  <tr id="sido_27"><th>대구<button>+</button></th><td><img src="images/roma_1.png"></td></tr>
-</tbody>
-""".encode("euc-kr")
 
 
 def _bits(value: int, width: int) -> str:
@@ -83,19 +72,8 @@ def test_parse_earthquake_extracts_pews_fields() -> None:
     assert quake.depth_km == 12.3
     assert quake.earthquake_id == "2012345"
     assert quake.intensity == 5
-    assert quake.max_areas == ["서울"]
     assert quake.occurred_at.tzinfo == KST
     assert quake.occurred_at == datetime(2026, 5, 17, 21, 34, 56, tzinfo=KST)
-
-
-def test_parse_official_intensity_areas_uses_highest_sido_intensity() -> None:
-    assert parse_official_intensity_areas(_INTENSITY_HTML) == ["전남광주"]
-
-
-def test_build_intensity_detail_url_uses_kst_timestamp() -> None:
-    occurred_at = datetime(2026, 5, 17, 12, 34, 56, tzinfo=timezone.utc)
-
-    assert build_intensity_detail_url(occurred_at).endswith("i_3_20260517213456.html")
 
 
 def test_pews_message_uses_expected_priority_and_text() -> None:
@@ -108,7 +86,6 @@ def test_pews_message_uses_expected_priority_and_text() -> None:
         occurred_at=datetime(2026, 5, 17, 21, 34, 56, tzinfo=KST),
         earthquake_id="2012345",
         intensity=5,
-        max_areas=["서울"],
         info_text="전북 익산 북쪽 5km 지역",
     )
 
@@ -130,7 +107,6 @@ def test_pews_message_formats_occurrence_time_as_kst() -> None:
         occurred_at=datetime(2026, 5, 17, 12, 34, 56, tzinfo=timezone.utc),
         earthquake_id="2012345",
         intensity=5,
-        max_areas=["서울"],
         info_text="전북 익산 북쪽 5km 지역",
     )
 
@@ -145,8 +121,6 @@ def test_pews_grid_photo_message_uses_csharp_style_caption(tmp_path, monkeypatch
     def fetcher(url: str, _timeout: float) -> bytes:
         if url.endswith(".b"):
             return _quake_binary()
-        if url.endswith(".html"):
-            return _INTENSITY_HTML
         if url.endswith(".i"):
             return bytes([0x45]) * 128
         raise AssertionError(f"unexpected URL: {url}")
@@ -166,8 +140,7 @@ def test_pews_grid_photo_message_uses_csharp_style_caption(tmp_path, monkeypatch
     capture_dir = tmp_path / "pews-captures" / "2012345"
     assert (capture_dir / "phase3.b").read_bytes() == _quake_binary()
     assert (capture_dir / "phase3.i").read_bytes() == bytes([0x45]) * 128
-    assert (capture_dir / "phase3.intensity.html").read_bytes() == _INTENSITY_HTML
-    assert "영향 지역 : 전남광주" in messages[0].text
+    assert "영향 지역" not in messages[0].text
 
 
 def test_pews_capture_retention_keeps_only_the_newest_events(tmp_path) -> None:
@@ -243,7 +216,6 @@ def test_render_grid_image_writes_png(tmp_path) -> None:
         occurred_at=datetime(2026, 5, 17, 21, 34, 56, tzinfo=KST),
         earthquake_id="2012345",
         intensity=5,
-        max_areas=["서울"],
         info_text="전북 익산 북쪽 5km 지역",
     )
 

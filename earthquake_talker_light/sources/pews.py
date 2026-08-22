@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from html.parser import HTMLParser
 import json
 import logging
 from pathlib import Path
-import re
 import shutil
 import time
 from typing import Callable
@@ -18,32 +16,12 @@ from earthquake_talker_light.http import NotFoundError, fetch_bytes
 from earthquake_talker_light.message import KST, Message, Priority
 
 PEWS_DATA_PATH = "https://www.weather.go.kr/pews/data"
-INTENSITY_DETAIL_PATH = "https://www.weather.go.kr/w/XML/INTENSITY"
 HEAD_LENGTH = 4
 SIMULATION_DURATION_SECONDS = 300.0
 MAX_EQK_STR_LEN = 60
 MAX_EQK_INFO_LEN = 120
 MAX_CAPTURED_PEWS_EVENTS = 20
 PEWS_CAPTURE_DIR_NAME = "pews-captures"
-AREA_NAMES = [
-    "서울",
-    "부산",
-    "대구",
-    "인천",
-    "광주",
-    "대전",
-    "울산",
-    "세종",
-    "경기",
-    "강원",
-    "충북",
-    "충남",
-    "전북",
-    "전남",
-    "경북",
-    "경남",
-    "제주",
-]
 MMI_COLORS = [
     "#FFFFFF",
     "#FFFFFF",
@@ -62,46 +40,6 @@ MAP_PATH = ASSET_DIR / "map.png"
 logger = logging.getLogger(__name__)
 
 
-class _IntensityAreaParser(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self.rows: list[tuple[str, int]] = []
-        self._is_sido_row = False
-        self._capture_name = False
-        self._name_parts: list[str] = []
-        self._mmi: int | None = None
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        attributes = dict(attrs)
-        if tag == "tr":
-            row_id = attributes.get("id", "")
-            self._is_sido_row = row_id.startswith("sido_")
-            self._capture_name = False
-            self._name_parts = []
-            self._mmi = None
-        elif self._is_sido_row and tag == "th":
-            self._capture_name = True
-        elif self._is_sido_row and tag == "button":
-            self._capture_name = False
-        elif self._is_sido_row and tag == "img":
-            match = re.search(r"roma_(\d+)\.png", attributes.get("src", ""))
-            if match:
-                self._mmi = int(match.group(1))
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag == "th":
-            self._capture_name = False
-        elif tag == "tr" and self._is_sido_row:
-            name = " ".join("".join(self._name_parts).split())
-            if name and self._mmi is not None:
-                self.rows.append((name, self._mmi))
-            self._is_sido_row = False
-
-    def handle_data(self, data: str) -> None:
-        if self._capture_name:
-            self._name_parts.append(data)
-
-
 @dataclass(frozen=True)
 class PewsEarthquake:
     phase: int
@@ -112,7 +50,6 @@ class PewsEarthquake:
     occurred_at: datetime
     earthquake_id: str
     intensity: int
-    max_areas: list[str]
     info_text: str
 
     @property
@@ -122,20 +59,6 @@ class PewsEarthquake:
     @property
     def epicenter_xy(self) -> tuple[float, float]:
         return ((self.longitude - 124.5) * 113 - 4, (38.9 - self.latitude) * 138.4 - 7)
-
-
-def build_intensity_detail_url(occurred_at: datetime) -> str:
-    timestamp = occurred_at.astimezone(KST).strftime("%Y%m%d%H%M%S")
-    return f"{INTENSITY_DETAIL_PATH}/i_3_{timestamp}.html"
-
-
-def parse_official_intensity_areas(raw: bytes) -> list[str]:
-    parser = _IntensityAreaParser()
-    parser.feed(raw.decode("euc-kr", errors="replace"))
-    if not parser.rows:
-        return []
-    max_mmi = max(mmi for _name, mmi in parser.rows)
-    return list(dict.fromkeys(name for name, mmi in parser.rows if mmi == max_mmi))
 
 
 class KmaPewsSource:
@@ -210,7 +133,6 @@ class KmaPewsSource:
 
         self._save_capture(quake.earthquake_id, phase, ".b", bytes_b)
         info_text = self._request_location_text(quake.earthquake_id, phase) or quake.info_text
-        official_areas = self._request_official_intensity_areas(quake) if phase == 3 else None
         quake = PewsEarthquake(
             phase=quake.phase,
             latitude=quake.latitude,
@@ -220,7 +142,6 @@ class KmaPewsSource:
             occurred_at=quake.occurred_at,
             earthquake_id=quake.earthquake_id,
             intensity=quake.intensity,
-            max_areas=official_areas or quake.max_areas,
             info_text=info_text,
         )
         self.previous_alarm_id = quake.alarm_id
@@ -278,20 +199,6 @@ class KmaPewsSource:
             return None
         self._save_capture(quake.earthquake_id, quake.phase, f".{suffix}", raw)
         return render_grid_image(raw, quake, self.output_dir)
-
-    def _request_official_intensity_areas(self, quake: PewsEarthquake) -> list[str] | None:
-        try:
-            raw = self._fetch_body(build_intensity_detail_url(quake.occurred_at))
-        except Exception:
-            logger.debug("Official intensity detail unavailable id=%s", quake.earthquake_id)
-            return None
-        self._save_capture(quake.earthquake_id, quake.phase, ".intensity.html", raw)
-        areas = parse_official_intensity_areas(raw)
-        if not areas:
-            logger.debug("Official intensity detail had no regional rows id=%s", quake.earthquake_id)
-            return None
-        logger.info("Using official intensity areas id=%s areas=%s", quake.earthquake_id, ", ".join(areas))
-        return areas
 
     def _save_capture(self, earthquake_id: str, phase: int, suffix: str, data: bytes) -> None:
         """Retain raw PEWS inputs for a bounded number of detected events."""
@@ -414,14 +321,6 @@ def parse_earthquake(phase: int, body_bits: str, info_bytes: bytes) -> PewsEarth
     occurred_at = datetime.fromtimestamp(unix_time + 9 * 3600, tz=timezone.utc).astimezone(KST)
     earthquake_id = "20" + str(int(data[69:95], 2))
     intensity = int(data[95:99], 2)
-    max_area_bits = data[99:116]
-    max_areas = [
-        AREA_NAMES[index]
-        for index, bit in enumerate(max_area_bits)
-        if bit == "1" and index < len(AREA_NAMES)
-    ]
-    if max_area_bits == "1" * len(max_area_bits):
-        max_areas = []
 
     info_text = unquote(info_bytes.decode("utf-8", errors="replace")).strip()
     return PewsEarthquake(
@@ -433,7 +332,6 @@ def parse_earthquake(phase: int, body_bits: str, info_bytes: bytes) -> PewsEarth
         occurred_at=occurred_at,
         earthquake_id=earthquake_id,
         intensity=intensity,
-        max_areas=max_areas,
         info_text=info_text,
     )
 
@@ -458,7 +356,6 @@ def build_pews_message(quake: PewsEarthquake) -> Message:
             level=Priority.CRITICAL,
         )
 
-    areas = ", ".join(quake.max_areas) if quake.max_areas else "-"
     depth = "-" if quake.depth_km == 0 else f"{quake.depth_km:.1f} km"
     lines = [
         "지진 상세정보가 발표되었습니다.",
@@ -467,7 +364,6 @@ def build_pews_message(quake: PewsEarthquake) -> Message:
         f"규모 : {quake.magnitude:.1f}",
         f"깊이 : {depth}",
         f"최대 진도 : {mmi_to_string(quake.intensity)}({quake.intensity})",
-        f"영향 지역 : {areas}",
     ]
     return Message(
         sender="기상청 실시간 지진감시",
